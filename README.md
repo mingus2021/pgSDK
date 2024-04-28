@@ -1,6 +1,6 @@
 # pgSDK
 
-Demo:
+================Demo=========================
 package main
 
 import (
@@ -20,29 +20,29 @@ func main() {
 		fmt.Printf("Failed to verify client certificate signature: %v[%d]\n", err, code)
 	}
 }
+================Demo=========================
 
-
-        
+================interface====================        
   -key
         generate RSA Key
         interface：generator.GenerateRSAKey()
-        
+-------------------------------------------      
   -list
         list certificate content
         interface：generator.PrintCertContent(path)
-        
+-------------------------------------------      
   -verify
         verify certificate
         interface：generator.VerifyClientCertSignature(url, path)
-
+ ------------------------------------------- 
 
   -url string
         set server url
-        
+ -------------------------------------------       
   -path string
         set the path of certificate file   
-        
+ -------------------------------------------         
   -ca string
         Path to the certificate request file (JSON format)
-
-        
+ ------------------------------------------- 
+ ================interface====================       
