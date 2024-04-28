@@ -14,8 +14,8 @@ const (
 )
 
 func main() {
-	generator := pgSDK.NewRSAKeyGenerator()
-	err, code := generator.VerifyClientCertSignature(url, path)
+	pgInterface := pgSDK.NewPGinterface()
+	code,err := pgInterface.VerifyClientCertSignature(url, path)
 	if err != nil {
 		fmt.Printf("Failed to verify client certificate signature: %v[%d]\n", err, code)
 	}
@@ -26,15 +26,15 @@ func main() {
 
   -key
         generate RSA Key
-        interface：generator.GenerateRSAKey()
+        interface：pgInterface.GeneratePGKey()
 -------------------------------------------      
   -list
         list certificate content
-        interface：generator.PrintCertContent(path)
+        interface：pgInterface.PrintCertContent(path)
 -------------------------------------------      
   -verify
         verify certificate
-        interface：generator.VerifyClientCertSignature(url, path)
+        interface：pgInterface.VerifyClientCertSignature(url, path)
  ------------------------------------------- 
 
   -url string
