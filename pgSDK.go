@@ -23,11 +23,12 @@ import (
 const (
 	privateKeyFile = "private_key.pem"
 	publicKeyFile  = "public_key.pem"
-	certFilename   = "client.pem"
 	jsonFilePath   = "servers.json" // JSON文件的路径
 )
 
 var servers []ServerConfig
+var certFilename string
+var serverURL string
 
 // ServerConfig 表示服务器配置
 type ServerConfig struct {
@@ -56,8 +57,14 @@ type CertRequest struct {
 
 // RSAKeyGenerator 接口定义了生成RSA密钥对的方法
 type RSAKeyGenerator interface {
-	generateRSAKey() error
-	verifyClientCertSignature(serverURL string, filename string) (error, int)
+	SetCertFilePath(path string)
+	SetServerAddr(addr string)
+	GenerateRSAKey() error
+	VerifyClientCertSignature(serverURL string, filename string) (error, int)
+
+	PrintCertContent(certPath string) error
+	SendCertRequest(certReq CertRequest, serverURL string, certFilename string) error
+	ReadCertRequest(inputFilePath string) (CertRequest, error)
 }
 
 // rsaKeyGeneratorImpl 实现了RSAKeyGenerator接口
@@ -68,8 +75,20 @@ func NewRSAKeyGenerator() RSAKeyGenerator {
 	return &rsaKeyGeneratorImpl{}
 }
 
+// 设置证书文件路径的函数
+func (g *rsaKeyGeneratorImpl) SetCertFilePath(path string) {
+	certFilename = path
+	fmt.Println("set certFilename:", certFilename)
+}
+
+// 设置服务器地址的函数
+func (g *rsaKeyGeneratorImpl) SetServerAddr(addr string) {
+	serverURL = addr
+	fmt.Println("set serverURL:", serverURL)
+}
+
 // generateRSAPublicKey 生成RSA公钥和私钥
-func (g *rsaKeyGeneratorImpl) generateRSAKey() error {
+func (g *rsaKeyGeneratorImpl) GenerateRSAKey() error {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return fmt.Errorf("Failed to generate RSA public and private keys: %v", err)
@@ -97,7 +116,7 @@ func (g *rsaKeyGeneratorImpl) generateRSAKey() error {
 }
 
 // sendCertRequest 发送证书请求到服务端
-func sendCertRequest(certReq CertRequest, serverURL string) error {
+func (g *rsaKeyGeneratorImpl) SendCertRequest(certReq CertRequest, serverURL string, certFilename string) error {
 	jsonData, err := json.Marshal(certReq)
 	if err != nil {
 		return fmt.Errorf("failed to marshal certificate request: %v", err)
@@ -186,7 +205,7 @@ func readServerConfig(configFilePath string) (string, error) {
 }
 
 // readCertRequest 从JSON文件中读取证书请求
-func readCertRequest(inputFilePath string) (CertRequest, error) {
+func (g *rsaKeyGeneratorImpl) ReadCertRequest(inputFilePath string) (CertRequest, error) {
 	certReqBytes, err := ioutil.ReadFile(inputFilePath)
 	if err != nil {
 		return CertRequest{}, fmt.Errorf("failed to read certificate request file: %v", err)
@@ -200,7 +219,7 @@ func readCertRequest(inputFilePath string) (CertRequest, error) {
 }
 
 // printCertContent 打印证书内容
-func printCertContent(certPath string) error {
+func (g *rsaKeyGeneratorImpl) PrintCertContent(certPath string) error {
 	certData, err := ioutil.ReadFile(certPath)
 	if err != nil {
 		return fmt.Errorf("failed to read certificate file: %v", err)
@@ -298,7 +317,7 @@ func stringToPublicKey(publicKeyString string) (*rsa.PublicKey, error) {
 }
 
 // verifyClientCertSignature 使用RSA公钥验证客户端证书的签名
-func (g *rsaKeyGeneratorImpl) verifyClientCertSignature(serverURL string, filename string) (error, int) {
+func (g *rsaKeyGeneratorImpl) VerifyClientCertSignature(serverURL string, filename string) (error, int) {
 	if err := syncCRL(serverURL); err != nil {
 		//log.Fatalf("Error syncing CRL: %v", err)
 		return fmt.Errorf("Error syncing CRL: %v", err), 1
