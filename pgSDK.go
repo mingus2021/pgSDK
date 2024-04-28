@@ -60,9 +60,9 @@ type RSAKeyGenerator interface {
 	SetCertFilePath(path string)
 	SetServerAddr(addr string)
 	GenerateRSAKey() error
-	VerifyClientCertSignature(serverURL string, filename string) (error, int)
+	VerifyClientCertSignature(serverURL string, certFilename string) (int, error)
 
-	PrintCertContent(certPath string) error
+	PrintCertContent(certFilename string) error
 	SendCertRequest(certReq CertRequest, serverURL string, certFilename string) error
 	ReadCertRequest(inputFilePath string) (CertRequest, error)
 }
@@ -219,8 +219,8 @@ func (g *rsaKeyGeneratorImpl) ReadCertRequest(inputFilePath string) (CertRequest
 }
 
 // printCertContent 打印证书内容
-func (g *rsaKeyGeneratorImpl) PrintCertContent(certPath string) error {
-	certData, err := ioutil.ReadFile(certPath)
+func (g *rsaKeyGeneratorImpl) PrintCertContent(certFilename string) error {
+	certData, err := ioutil.ReadFile(certFilename)
 	if err != nil {
 		return fmt.Errorf("failed to read certificate file: %v", err)
 	}
@@ -317,10 +317,10 @@ func stringToPublicKey(publicKeyString string) (*rsa.PublicKey, error) {
 }
 
 // verifyClientCertSignature 使用RSA公钥验证客户端证书的签名
-func (g *rsaKeyGeneratorImpl) VerifyClientCertSignature(serverURL string, filename string) (error, int) {
+func (g *rsaKeyGeneratorImpl) VerifyClientCertSignature(serverURL string, certFilename string) (int, error) {
 	if err := syncCRL(serverURL); err != nil {
 		//log.Fatalf("Error syncing CRL: %v", err)
-		return fmt.Errorf("Error syncing CRL: %v", err), 1
+		return 1, fmt.Errorf("Error syncing CRL: %v", err)
 	}
 
 	// 调用函数获取 PublicKey
@@ -330,23 +330,23 @@ func (g *rsaKeyGeneratorImpl) VerifyClientCertSignature(serverURL string, filena
 	} else {
 		//fmt.Println("The specified CA server is invalid, and the verification has failed.")
 		//os.Exit(1)
-		return fmt.Errorf("The specified CA server is invalid, and the verification has failed"), 2
+		return 2, fmt.Errorf("The specified CA server is invalid, and the verification has failed")
 	}
 
 	// 加载RSA公钥
 	rsaPubKey, err := stringToPublicKey(publicKey)
 	if err != nil {
 		//log.Fatalf("Error loading RSA public key: %v", err)
-		return fmt.Errorf("Error loading RSA public key: %v", err), 3
+		return 3, fmt.Errorf("Error loading RSA public key: %v", err)
 	}
 	// 打印公钥信息
 	//fmt.Printf("Public Key: %+v\n", publicKey)
 
 	// 读取待验证的CA证书
-	caCertPEM, err := ioutil.ReadFile(filename)
+	caCertPEM, err := ioutil.ReadFile(certFilename)
 	if err != nil {
 		//log.Fatalf("Failed to read CA certificate: %v", err)
-		return fmt.Errorf("Failed to read CA certificate: %v", err), 4
+		return 4, fmt.Errorf("Failed to read CA certificate: %v", err)
 	}
 	//fmt.Println(string(caCertPEM))
 
@@ -354,28 +354,28 @@ func (g *rsaKeyGeneratorImpl) VerifyClientCertSignature(serverURL string, filena
 	block, _ := pem.Decode(caCertPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
 		log.Fatal("Failed to decode PEM block containing the certificate")
-		return fmt.Errorf("Failed to decode PEM block containing the certificate"), 5
+		return 5, fmt.Errorf("Failed to decode PEM block containing the certificate")
 	}
 	// 解析DER编码的证书
 	clientCert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		//log.Fatalf("Failed to parse client certificate: %v", err)
-		return fmt.Errorf("Failed to parse client certificate: %v", err), 6
+		return 6, fmt.Errorf("Failed to parse client certificate: %v", err)
 	}
 	// 计算证书签名的哈希值
 	hash := sha256.New()
 	_, err = hash.Write(clientCert.RawTBSCertificate)
 	if err != nil {
-		return fmt.Errorf("Failed to hash TBS certificate: %w", err), 7
+		return 7, fmt.Errorf("Failed to hash TBS certificate: %w", err)
 	}
 	digest := hash.Sum(nil)
 	// 验证签名
 	err = rsa.VerifyPKCS1v15(rsaPubKey, crypto.SHA256, digest, clientCert.Signature)
 	if err != nil {
-		return fmt.Errorf("failed to verify signature: %w", err), 8
+		return 8, fmt.Errorf("failed to verify signature: %w", err)
 	}
 	fmt.Println("Client certificate signature verified successfully.")
-	return nil, 0
+	return 0, nil
 }
 
 // getPublicKeyByIP 从 servers 切片中查找具有指定 IP 的服务器的 PublicKey
