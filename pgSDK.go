@@ -245,6 +245,7 @@ func (g *PGinterfaceImpl) VerifyClientCertSignature(serverURL string, certFilena
 	// 获取当前时间
 	now := time.Now()
 	// 检查证书是否过期
+	fmt.Println(clientCert.NotAfter)
 	if now.After(clientCert.NotAfter) {
 		return 4, fmt.Errorf("Certificate has expired.")
 	}
@@ -258,8 +259,8 @@ func (g *PGinterfaceImpl) VerifyClientCertSignature(serverURL string, certFilena
 		return 6, fmt.Errorf("The specified CA server is invalid, and the verification has failed")
 	}
 	// 检查SerialNumber是否在RevokedCertificates列表中
-	if isSerialNumberRevoked(caServerList, clientCert.SerialNumber.String()) {
-		return 7, fmt.Errorf("SerialNumber %s is revoked.\n", clientCert.SerialNumber.String())
+	if isSerialNumberRevoked(caServerList, hex.EncodeToString(clientCert.SerialNumber.Bytes())) {
+		return 7, fmt.Errorf("SerialNumber %s is revoked.\n", hex.EncodeToString(clientCert.SerialNumber.Bytes()))
 	}
 
 	// 加载RSA公钥
