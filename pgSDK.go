@@ -245,7 +245,6 @@ func (g *PGinterfaceImpl) VerifyClientCertSignature(serverURL string, certFilena
 	// 获取当前时间
 	now := time.Now()
 	// 检查证书是否过期
-	fmt.Println(clientCert.NotAfter)
 	if now.After(clientCert.NotAfter) {
 		return 4, fmt.Errorf("Certificate has expired.")
 	}
