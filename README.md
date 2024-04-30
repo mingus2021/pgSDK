@@ -36,18 +36,28 @@ func main() {
   -verify
         verify certificate
         interface：pgInterface.VerifyClientCertSignature(url, path)
+	
  	[code&err]:
   	1, "Failed to read CA certificate"
+   
 	2, "Failed to decode PEM block containing the certificate"
+ 
 	3, "Failed to parse client certificate"
+ 
 	4, "Certificate has expired"
+ 
 	5, "Error syncing CRL"
+ 
 	6, "The specified CA server is invalid, and the verification has failed"
+ 
 	7, "The SerialNumber is revoked"
+ 
 	8, "Error loading RSA public key"
+ 
 	9, "Failed to hash TBS certificate"
+ 
 	10, "failed to verify signature" 
- ------------------------------------------- 
+ -------------------------------------------
   -url string
         set server url
  -------------------------------------------       
