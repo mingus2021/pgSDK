@@ -1,4 +1,4 @@
-package pgsdk
+package pgSDK
 
 import (
 	"crypto"
