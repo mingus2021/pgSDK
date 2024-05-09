@@ -1,7 +1,6 @@
-package pgSDK
+package pgsdk
 
 import (
-	"bufio"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -26,6 +25,21 @@ const (
 	jsonFilePath   = "servers.json" // JSON文件的路径
 )
 
+// 定义错误码常量
+const (
+	ErrNone       = 0  // success
+	ErrReadCert   = 1  // failed to read CA certificate
+	ErrDecode     = 2  // failed to decode PEM block containing the certificate
+	ErrParse      = 3  // failed to parse client certificate
+	ErrExpired    = 4  // certificate has expired
+	ErrSyncing    = 5  // error syncing CRL
+	ErrInvalid    = 6  // the specified CA server is invalid, and the verification has failed
+	ErrRevoked    = 7  // the SerialNumber is revoked
+	ErrLoadingKey = 8  // error loading RSA public key
+	ErrHash       = 9  // failed to hash TBS certificate
+	ErrSignature  = 10 // failed to verify signature
+)
+
 // RevokedCert 代表一个被撤销的证书
 type RevokedCert struct {
 	SerialNumber string `json:"serial_number"`
@@ -45,16 +59,6 @@ type CAServerList struct {
 // var servers []ServerConfig
 var certFilename string
 var serverURL string
-
-//// ServerConfig 表示服务器配置
-//type ServerConfig struct {
-//	Wallet    common.Address `json:"wallet"`
-//	IP        string         `json:"ip"`
-//	PublicKey string         `json:"public_key"`
-//	Level     uint8          `json:"level"`
-//	Valid     bool           `json:"valid"`
-//	Superiors common.Address `json:"superiors"`
-//}
 
 // CertRequest 包含客户端请求的证书信息
 type CertRequest struct {
@@ -107,7 +111,7 @@ func (g *PGinterfaceImpl) SetServerAddr(addr string) {
 func (g *PGinterfaceImpl) GeneratePGKey() error {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return fmt.Errorf("Failed to generate RSA public and private keys: %v", err)
+		return fmt.Errorf("failed to generate RSA public and private keys: %v", err)
 	}
 
 	// 将私钥保存到文件
@@ -115,14 +119,14 @@ func (g *PGinterfaceImpl) GeneratePGKey() error {
 	privateKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: privateKeyBytes})
 	err = os.WriteFile(privateKeyFile, privateKeyPEM, 0644)
 	if err != nil {
-		return fmt.Errorf("Failed to save privatekey to file: %v", err)
+		return fmt.Errorf("failed to save privatekey to file: %v", err)
 	}
 	log.Printf("Private key saved to %s\n", privateKeyFile)
 
 	publicKey := &privateKey.PublicKey
 	publicKeyBytes, err := x509.MarshalPKIXPublicKey(publicKey)
 	if err != nil {
-		return fmt.Errorf("Failed to save publickey to file: %v", err)
+		return fmt.Errorf("failed to save publickey to file: %v", err)
 	}
 	publicKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicKeyBytes})
 
@@ -151,7 +155,7 @@ func (g *PGinterfaceImpl) SendCertRequest(certReq CertRequest, serverURL string,
 	if err != nil {
 		return fmt.Errorf("failed to marshal certificate request: %v", err)
 	}
-	req, err := http.NewRequest("POST", "http://"+serverURL+"/issueCertificate", strings.NewReader(string(jsonData)))
+	req, err := http.NewRequest("POST", serverURL+"/issueCertificate", strings.NewReader(string(jsonData)))
 	if err != nil {
 		return fmt.Errorf("failed to create HTTP request: %v", err)
 	}
@@ -175,7 +179,7 @@ func (g *PGinterfaceImpl) SendCertRequest(certReq CertRequest, serverURL string,
 	// 读取请求体中的证书内容
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("Failed to read request body")
+		return fmt.Errorf("failed to read request body")
 	}
 	defer resp.Body.Close()
 	// 解析PEM编码的证书
@@ -186,7 +190,7 @@ func (g *PGinterfaceImpl) SendCertRequest(certReq CertRequest, serverURL string,
 	// 保存证书到文件
 	certOut, err := os.Create(certFilename)
 	if err != nil {
-		return fmt.Errorf("Failed to Create pem")
+		return fmt.Errorf("failed to Create pem")
 	}
 	defer certOut.Close()
 	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: block.Bytes})
@@ -229,59 +233,59 @@ func (g *PGinterfaceImpl) VerifyClientCertSignature(serverURL string, certFilena
 	caCertPEM, err := ioutil.ReadFile(certFilename)
 	if err != nil {
 		//log.Fatalf("Failed to read CA certificate: %v", err)
-		return 1, fmt.Errorf("Failed to read CA certificate: %v", err)
+		return ErrReadCert, fmt.Errorf("failed to read CA certificate: %v", err)
 	}
 	// 解析PEM编码的证书
 	block, _ := pem.Decode(caCertPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
-		log.Fatal("Failed to decode PEM block containing the certificate")
-		return 2, fmt.Errorf("Failed to decode PEM block containing the certificate")
+		log.Fatal("failed to decode PEM block containing the certificate")
+		return ErrDecode, fmt.Errorf("failed to decode PEM block containing the certificate")
 	}
 	// 解析DER编码的证书
 	clientCert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return 3, fmt.Errorf("Failed to parse client certificate: %v", err)
+		return ErrParse, fmt.Errorf("failed to parse client certificate: %v", err)
 	}
 	// 获取当前时间
 	now := time.Now()
 	// 检查证书是否过期
 	if now.After(clientCert.NotAfter) {
-		return 4, fmt.Errorf("Certificate has expired.")
+		return ErrExpired, fmt.Errorf("certificate has expired")
 	}
 	var caServerList *CAServerList
 	if caServerList, err = syncCRL(serverURL); err != nil {
-		return 5, fmt.Errorf("Error syncing CRL: %v", err)
+		return ErrSyncing, fmt.Errorf("error syncing CRL: %v", err)
 	}
 	// 调用函数获取 PublicKey
 	publicKey, found := findPublicKeyByServerURL(caServerList, serverURL)
 	if !found {
-		return 6, fmt.Errorf("The specified CA server is invalid, and the verification has failed")
+		return ErrInvalid, fmt.Errorf("the specified CA server is invalid, and the verification has failed")
 	}
 	// 检查SerialNumber是否在RevokedCertificates列表中
 	if isSerialNumberRevoked(caServerList, hex.EncodeToString(clientCert.SerialNumber.Bytes())) {
-		return 7, fmt.Errorf("SerialNumber %s is revoked.\n", hex.EncodeToString(clientCert.SerialNumber.Bytes()))
+		return ErrRevoked, fmt.Errorf("serialNumber %s is revoked", hex.EncodeToString(clientCert.SerialNumber.Bytes()))
 	}
 
 	// 加载RSA公钥
 	rsaPubKey, err := stringToPublicKey(publicKey)
 	if err != nil {
-		return 8, fmt.Errorf("Error loading RSA public key: %v", err)
+		return ErrLoadingKey, fmt.Errorf("error loading public key: %v", err)
 	}
 
 	// 计算证书签名的哈希值
 	hash := sha256.New()
 	_, err = hash.Write(clientCert.RawTBSCertificate)
 	if err != nil {
-		return 9, fmt.Errorf("Failed to hash TBS certificate: %w", err)
+		return ErrHash, fmt.Errorf("failed to hash TBS certificate: %w", err)
 	}
 	digest := hash.Sum(nil)
 	// 验证签名
 	err = rsa.VerifyPKCS1v15(rsaPubKey, crypto.SHA256, digest, clientCert.Signature)
 	if err != nil {
-		return 10, fmt.Errorf("failed to verify signature: %w", err)
+		return ErrSignature, fmt.Errorf("failed to verify signature: %w", err)
 	}
-	fmt.Println("Client certificate signature verified successfully.")
-	return 0, nil
+	//fmt.Println("client certificate signature verified successfully.")
+	return ErrNone, nil
 }
 
 // syncCRL 同步CRL（证书吊销列表）
@@ -289,7 +293,7 @@ func syncCRL(serverURL string) (*CAServerList, error) {
 	// 创建HTTP客户端
 	client := &http.Client{}
 	// 发送GET请求
-	resp, err := client.Get("http://" + serverURL + "/server_list")
+	resp, err := client.Get(serverURL + "/server_list")
 	if err != nil {
 		return nil, fmt.Errorf("HTTP GET request failed: %v", err)
 	}
@@ -301,31 +305,30 @@ func syncCRL(serverURL string) (*CAServerList, error) {
 	// 读取响应体
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read response body: %v", err)
+		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}
 	// 解析JSON到caServerList 切片
 	var caServerList CAServerList
 	err = json.Unmarshal(body, &caServerList)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to unmarshal JSON: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal JSON: %v", err)
 	}
 	// 将解析后的数据写入本地文件
 	file, err := os.Create(jsonFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create file: %v", err)
+		return nil, fmt.Errorf("failed to create file: %v", err)
 	}
 	defer file.Close()
 	// 将切片编码回JSON并写入文件
 	encoder := json.NewEncoder(file)
 	err = encoder.Encode(caServerList)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to encode JSON to file: %v", err)
+		return nil, fmt.Errorf("failed to encode JSON to file: %v", err)
 	}
 
-	fmt.Println("Server list successfully saved to server_list.json")
+	//fmt.Println("Server list successfully saved to server_list.json")
 	return &caServerList, nil
 }
-
 func stringToPublicKey(publicKeyString string) (*rsa.PublicKey, error) {
 	// 将Base64字符串解码为字节切片
 	publicKeyBytes, err := base64.StdEncoding.DecodeString(publicKeyString)
@@ -359,63 +362,6 @@ func isSerialNumberRevoked(serverList *CAServerList, serialNumber string) bool {
 		}
 	}
 	return false // 没有找到匹配的SerialNumber
-}
-
-// getPublicKeyByIP 从 servers 切片中查找具有指定 IP 的服务器的 PublicKey
-//func getPublicKeyByIP(ip string) (string, bool) {
-//	// 从JSON文件中读取servers
-//	err := readServersFromJSON(jsonFilePath)
-//	if err != nil {
-//		fmt.Fprintf(os.Stderr, "无法读取服务器配置: %v\n", err)
-//		os.Exit(1)
-//	}
-//
-//	for _, server := range servers {
-//		if server.IP == ip {
-//			return server.PublicKey, true
-//		}
-//	}
-//	return "", false
-//}
-// 从JSON文件中读取servers
-//func readServersFromJSON(filePath string) error {
-//	jsonData, err := ioutil.ReadFile(filePath)
-//	if err != nil {
-//		return err
-//	}
-//
-//	err = json.Unmarshal(jsonData, &servers)
-//	if err != nil {
-//		return err
-//	}
-//
-//	return nil
-//}
-
-// readServerConfig 读取配置文件并返回服务器地址
-func readServerConfig(configFilePath string) (string, error) {
-	file, err := os.Open(configFilePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to open config file: %v", err)
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "server_url = ") {
-			parts := strings.Split(line, " = ")
-			if len(parts) == 2 {
-				return strings.TrimSpace(parts[1]), nil
-			}
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("error reading config file: %v", err)
-	}
-
-	return "", fmt.Errorf("server URL not found in config file")
 }
 
 // parsePublicKeyFromResponse 解析从 GetPubliceKeyHandler 获取的响应为 RSA 公钥
